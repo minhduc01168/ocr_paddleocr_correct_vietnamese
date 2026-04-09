@@ -1,1 +1,0 @@
-# ocr_paddleocr_correct_vietnamese
