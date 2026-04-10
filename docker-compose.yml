@@ -1,0 +1,122 @@
+# ══════════════════════════════════════════════════════════════════════════
+# OCR SageMaker Service — Docker Compose (Local Development)
+#
+# Kiến trúc 2-service:
+#   ocr-engine   → Chứa toàn bộ ML: PaddleOCR + HuggingFace (Port 8002)
+#   ocr          → Orchestrator nhẹ, nhận request và điều phối (Port 8001)
+#
+# Cách dùng:
+#   docker compose up --build              # Chạy cả 2 service
+#   docker compose up ocr-engine           # Chỉ chạy Engine (cho SageMaker dev)
+#   docker compose logs -f ocr-engine      # Theo dõi log Engine
+# ══════════════════════════════════════════════════════════════════════════
+
+services:
+
+  # ── OCR AI Engine ──────────────────────────────────────────────────────
+  # Service nặng: PaddleOCR + HuggingFace Correction Model
+  # Build lần đầu: ~10-20 phút (tải torch + paddle + transformers)
+  # Start-up sau build: ~1-3 phút (load model vào RAM/VRAM)
+  ocr-engine:
+    build:
+      context: ./ocr-engine
+      dockerfile: Dockerfile
+    image: aihub-ocr-engine:latest
+    container_name: aihub-ocr-engine
+    restart: unless-stopped
+
+    ports:
+      - "${OCR_ENGINE_PORT:-8002}:8002"
+
+    environment:
+      # ── App ──────────────────────────────────────────────────────────────
+      - API_PORT=8002
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # ── ML Model ─────────────────────────────────────────────────────────
+      # Local: tải từ HuggingFace Hub
+      - CORRECT_MODEL_ID=${CORRECT_MODEL_ID:-protonx-models/protonx-legal-tc}
+      # Cache dir được mount từ volume để tránh tải lại mỗi lần restart
+      - MODEL_CACHE_DIR=/app/hf_cache
+      - HF_HOME=/app/hf_cache
+      - TRANSFORMERS_CACHE=/app/hf_cache
+      # ── OCR Processing ────────────────────────────────────────────────────
+      - OCR_IMAGE_SIZE=${OCR_IMAGE_SIZE:-1600}
+      - OCR_DPI=${OCR_DPI:-200}
+      # ── Process Limits ────────────────────────────────────────────────────
+      - MAX_PDF_PAGES=${MAX_PDF_PAGES:-100}
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-50}
+      # ── Concurrency ───────────────────────────────────────────────────────
+      # Để trống → tự detect (GPU=2, CPU=cpu_count)
+      - MAX_WORKERS=${MAX_WORKERS:-}
+      # ── Paddle Optimization ───────────────────────────────────────────────
+      - PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
+      - FLAGS_call_stack_level=0
+
+    volumes:
+      # Mount HuggingFace cache: tránh tải lại model sau mỗi lần restart
+      - hf_model_cache:/app/hf_cache
+      # Mount PaddleOCR cache (model weights)
+      - paddle_model_cache:/root/.paddleocr
+
+    # GPU support (bật nếu có NVIDIA GPU + nvidia-docker2)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/ping"]
+      interval: 30s
+      timeout: 15s
+      start_period: 120s  # Model cần 1-3 phút để load
+      retries: 3
+
+  # ── OCR Orchestrator ───────────────────────────────────────────────────
+  # Service nhẹ: nhận request từ client, chuyển tới ocr-engine
+  # Build: ~2 phút | Start-up: <10 giây
+  ocr:
+    build:
+      context: ./ocr
+      dockerfile: Dockerfile
+    image: aihub-ocr-orchestrator:latest
+    container_name: aihub-ocr-orchestrator
+    restart: unless-stopped
+
+    ports:
+      - "${OCR_PORT:-8001}:8001"
+
+    environment:
+      # ── App ──────────────────────────────────────────────────────────────
+      - API_PORT=8001
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # ── OCR Engine URL ────────────────────────────────────────────────────
+      # Dùng tên service Docker (không phải localhost)
+      - OCR_ENGINE_URL=http://ocr-engine:8002
+      # ── LiteLLM Gateway ───────────────────────────────────────────────────
+      - GATEWAY_URL=${GATEWAY_URL:-http://host.docker.internal:4000}
+      - GATEWAY_KEY=${GATEWAY_KEY:-sk-aihub-gateway-master}
+      # ── Process Limits ────────────────────────────────────────────────────
+      - MAX_PDF_PAGES=${MAX_PDF_PAGES:-100}
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-50}
+
+    depends_on:
+      ocr-engine:
+        condition: service_healthy  # Chờ Engine load model xong mới start
+
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/')\""]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+
+# ── Named Volumes ──────────────────────────────────────────────────────────
+# Giữ lại model weights giữa các lần restart container
+volumes:
+  hf_model_cache:
+    driver: local
+  paddle_model_cache:
+    driver: local

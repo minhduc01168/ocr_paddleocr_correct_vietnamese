@@ -11,4 +11,11 @@ from app.api import app
 if __name__ == "__main__":
     # Start server based on config settings
     # Nếu chạy trên Amazon SageMaker, hệ thống sẽ tự tìm thấy cổng API_PORT (Thường là 8080)
-    uvicorn.run("app.api:app", host="0.0.0.0", port=settings.api_port, reload=True)
+    uvicorn.run(
+        "app.api:app",
+        host="0.0.0.0",
+        port=settings.api_port,
+        workers=settings.workers or 1,
+        log_level=settings.log_level.lower(),
+        # reload=True CHỈ dùng khi debug local, KHÔNG dùng trong Docker/Production
+    )

@@ -14,8 +14,8 @@ from paddleocr import PaddleOCRVL
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from src.config import settings
-from src.utils import logger
+from app.config import settings
+from app.utils import logger
 
 # Tắt các log không cần thiết của Paddle
 os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
@@ -35,9 +35,9 @@ class DocumentsOCRProcessor:
             self.device = "cpu"
             default_workers = os.cpu_count() or 4
 
-        self.size_input = 1600
+        self.size_input = settings.ocr_image_size
         self.max_page_pdf = settings.max_pdf_pages
-        self.dpi = 200
+        self.dpi = settings.ocr_dpi
         
         # Nhận diện workers từ file cấu hình .env, fallback vào Hardware
         self.max_workers = settings.max_workers if settings.max_workers else default_workers

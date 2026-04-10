@@ -8,24 +8,28 @@ from app.utils import logger
 
 class DocumentsOCRProcessor:
     def __init__(self):
+        # Orchestrator gọi qua AI Hub Gateway để logging FinOps
         self.gateway_url = settings.get_gateway_url()
-        self.gateway_key = settings.gateway_key
+        self.engine_url = settings.get_engine_url()
         logger.info(f"[+] Orchestrator ready. Gateway: {self.gateway_url}")
 
     def _gateway_chat(self, model: str, messages: list):
-        """Helper to call Gateway via HTTPX."""
+        """Helper to call OCR Engine via AI Hub LiteLLM Gateway."""
         url = f"{self.gateway_url.rstrip('/')}/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {settings.gateway_key}"
+        }
         try:
             # Tăng timeout lên 30 phút (1800s) cho các mô hình quét nặng trên CPU
             with httpx.Client(timeout=1800.0) as client:
                 resp = client.post(
                     url,
+                    headers=headers,
                     json={
                         "model": model,
                         "messages": messages,
                         "temperature": 0.0
-                    },
-                    headers={"Authorization": f"Bearer {self.gateway_key}"}
+                    }
                 )
                 resp.raise_for_status()
                 result = resp.json()
@@ -51,7 +55,7 @@ class DocumentsOCRProcessor:
             
             logger.info(f"[*] Sending request to Gateway using model: {model_id} (Engine: {engine})")
 
-            # 3. Gọi Gateway (Chuẩn Vision API)
+            # 3. Gọi Gateway (Chuẩn Vision API để tính token)
             result_markdown = self._gateway_chat(
                 model=model_id,
                 messages=[
@@ -67,6 +71,7 @@ class DocumentsOCRProcessor:
                     }
                 ]
             )
+
 
             if not result_markdown:
                 return "Error: Gateway returned empty result or connection failed."

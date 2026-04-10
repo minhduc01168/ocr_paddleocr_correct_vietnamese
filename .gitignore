@@ -1,6 +1,35 @@
 __pycache__/
 *.pyc
+*.pyo
+
+# ── Secrets & Config ─────────────────────────────────────────────────────
 .env
 *.log
+
+# ── Python ───────────────────────────────────────────────────────────────
 node_modules/
 .opencode/
+*.egg-info/
+dist/
+build/
+
+# ── ML Model Cache ───────────────────────────────────────────────────────
+# HuggingFace cache (tránh commit model weights vào Git)
+hf_cache/
+.cache/
+**/.cache/huggingface/
+
+# PaddleOCR cache
+.paddleocr/
+**/.paddleocr/
+
+# Model archive
+*.tar.gz
+model_weights/
+
+# ── Temp Files ───────────────────────────────────────────────────────────
+tmp/
+*.tmp
+
+# ── macOS ────────────────────────────────────────────────────────────────
+.DS_Store

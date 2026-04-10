@@ -40,8 +40,8 @@ class OCREngine:
             default_workers = os.cpu_count() or 4
 
         self.max_workers = settings.max_workers if settings.max_workers else default_workers
-        self.size_input = 1600
-        self.dpi = 200
+        self.size_input = settings.ocr_image_size
+        self.dpi = settings.ocr_dpi
 
         logger.info("[*] Initializing Single PaddleOCRVL instance (Stability mode)...")
         self.ocr_pipeline = PaddleOCRVL() 
